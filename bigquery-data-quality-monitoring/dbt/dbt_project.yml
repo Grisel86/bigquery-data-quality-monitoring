@@ -1,0 +1,37 @@
+name: chicago_crime_dq
+version: "1.0.0"
+config-version: 2
+
+profile: chicago_crime_dq
+
+model-paths:   ["models"]
+test-paths:    ["tests"]
+macro-paths:   ["macros"]
+seed-paths:    ["seeds"]
+
+target-path:   "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  chicago_crime_dq:
+    staging:
+      +materialized: view
+      +schema: staging
+
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+
+    marts:
+      +materialized: table
+      +schema: marts
+      +partition_by:
+        field: "snapshot_date"
+        data_type: "date"
+
+vars:
+  source_project:  "bigquery-public-data"
+  source_dataset:  "chicago_crime"
+  source_table:    "crime"
+  start_year:      2001
+  end_year:        2024

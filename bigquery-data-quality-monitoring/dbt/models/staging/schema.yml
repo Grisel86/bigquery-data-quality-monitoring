@@ -1,0 +1,85 @@
+version: 2
+
+sources:
+  - name: chicago_crime_public
+    database: bigquery-public-data
+    schema: chicago_crime
+    description: "Chicago Police Department crime reports from 2001 to present"
+    tables:
+      - name: crime
+        description: "Each row represents a reported crime incident in Chicago"
+        columns:
+          - name: unique_key
+            description: "Primary key — unique identifier for each record"
+            tests:
+              - unique
+              - not_null
+          - name: case_number
+            tests:
+              - unique
+              - not_null
+          - name: date
+            tests:
+              - not_null
+          - name: primary_type
+            tests:
+              - not_null
+          - name: year
+            tests:
+              - not_null
+
+models:
+  - name: stg_chicago_crime
+    description: "Staged Chicago crime data — renamed, typed, and enriched with derived flags"
+    columns:
+      - name: unique_key
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+
+      - name: case_number
+        tests:
+          - unique
+          - not_null
+
+      - name: incident_datetime
+        tests:
+          - not_null
+
+      - name: incident_year
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 2001
+              max_value: 2024
+
+      - name: district
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 31
+              where: "district IS NOT NULL"
+
+      - name: primary_type
+        tests:
+          - not_null
+
+      - name: is_arrest
+        tests:
+          - not_null
+
+      - name: is_domestic
+        tests:
+          - not_null
+
+      - name: year_matches_date
+        tests:
+          - accepted_values:
+              values: [true]
+              where: "incident_datetime IS NOT NULL AND incident_year IS NOT NULL"
+
+      - name: date_not_future
+        tests:
+          - accepted_values:
+              values: [true]

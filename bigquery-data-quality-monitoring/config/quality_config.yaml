@@ -1,0 +1,72 @@
+# config/quality_config.yaml
+# ────────────────────────────
+# Centralised configuration for the quality pipeline.
+# runner.py reads these values — change rules here, not in code.
+
+source:
+  project:  "bigquery-public-data"
+  dataset:  "chicago_crime"
+  table:    "crime"
+  full_ref: "bigquery-public-data.chicago_crime.crime"
+
+audit_log:
+  dataset:   "chicago_crime_dq"
+  table:     "dq_check_log"
+
+checks:
+  completeness:
+    critical_columns:
+      - unique_key
+      - date
+      - primary_type
+    non_critical_columns:
+      - arrest
+      - domestic
+    threshold_checks:
+      - column: latitude
+        threshold_pct: 80.0
+        critical: false
+      - column: longitude
+        threshold_pct: 80.0
+        critical: false
+      - column: district
+        threshold_pct: 90.0
+        critical: false
+
+  uniqueness:
+    critical_columns:
+      - unique_key
+    non_critical_columns:
+      - case_number
+
+  validity:
+    range_checks:
+      - column:   year
+        min_val:  2001
+        max_val:  2024          # updated annually
+        critical: true
+      - column:   district
+        min_val:  1
+        max_val:  31
+        critical: false
+    date_not_future:
+      - column:   date
+        critical: true
+
+  consistency:
+    year_matches_date:
+      year_col:  year
+      date_col:  date
+      critical:  true
+    bbox_check:
+      lat_col:   latitude
+      lon_col:   longitude
+      lat_min:   41.64
+      lat_max:   42.02
+      lon_min:   -87.94
+      lon_max:   -87.52
+      critical:  false
+
+thresholds:
+  max_critical_failures_to_pass: 0
+  pipeline_halt_on_critical:     true

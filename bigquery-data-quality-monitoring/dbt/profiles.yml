@@ -1,0 +1,42 @@
+# dbt/profiles.yml
+# -----------------
+# Connection profile for BigQuery.
+# Replace YOUR_GCP_PROJECT with your actual GCP project ID.
+# Credentials come from:
+#   - Local dev:  Application Default Credentials (gcloud auth application-default login)
+#   - CI/CD:      GOOGLE_APPLICATION_CREDENTIALS env var pointing to service account JSON
+
+chicago_crime_dq:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth                    # uses gcloud ADC locally
+      project: YOUR_GCP_PROJECT        # ← replace this
+      dataset: chicago_crime_dq_dev
+      location: US
+      threads: 4
+      timeout_seconds: 300
+      priority: interactive
+
+    ci:
+      type: bigquery
+      method: service-account-json    # used in GitHub Actions
+      project: YOUR_GCP_PROJECT       # ← replace this
+      dataset: chicago_crime_dq_ci
+      location: US
+      threads: 2
+      timeout_seconds: 300
+      priority: batch
+      keyfile_json: "{{ env_var('GCP_SERVICE_ACCOUNT_JSON') }}"
+
+    prod:
+      type: bigquery
+      method: service-account-json
+      project: YOUR_GCP_PROJECT       # ← replace this
+      dataset: chicago_crime_dq
+      location: US
+      threads: 4
+      timeout_seconds: 600
+      priority: batch
+      keyfile_json: "{{ env_var('GCP_SERVICE_ACCOUNT_JSON') }}"
