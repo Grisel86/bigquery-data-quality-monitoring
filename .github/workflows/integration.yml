@@ -1,23 +1,50 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "src/**"
+      - "tests/integration/**"
+      - "requirements*.txt"
+  workflow_dispatch:  # Allow manual triggering
+
+# Don't run integration in parallel for the same branch — they share BigQuery resources
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # =========================================================
+  # Gate job — checks whether the required secrets are present.
+  # If not, the integration job is skipped cleanly (not failed).
+  # =========================================================
   check-secrets:
-    name: Check if BigQuery secrets are configured
+    name: Check BigQuery secrets are configured
     runs-on: ubuntu-latest
     outputs:
       has-secrets: ${{ steps.check.outputs.has-secrets }}
     steps:
       - id: check
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
-          if [[ -n "${{ secrets.GCP_SA_KEY }}" && -n "${{ secrets.GCP_PROJECT_ID }}" ]]; then
-            echo "has-secrets=true" >> $GITHUB_OUTPUT
+          if [[ -n "$GCP_SA_KEY" && -n "$GCP_PROJECT_ID" ]]; then
+            echo "has-secrets=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::BigQuery secrets detected — integration tests will run"
           else
-            echo "has-secrets=false" >> $GITHUB_OUTPUT
-            echo "::notice::BigQuery secrets not configured — skipping integration tests"
+            echo "has-secrets=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::BigQuery secrets not configured — skipping integration tests (this is fine for PRs that don't touch BigQuery)"
           fi
 
+  # =========================================================
+  # Integration tests — only run when secrets are configured
+  # =========================================================
   integration:
     name: BigQuery integration tests
     needs: check-secrets
-    if: needs.check-secrets.outputs.has-secrets == 'true'
+    if: needs.check-secrets.outputs.has-secrets == 'true' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: integration
