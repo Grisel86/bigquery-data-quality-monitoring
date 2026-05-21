@@ -7,16 +7,42 @@ on:
   workflow_dispatch:
 
 jobs:
+  # =========================================================
+  # Gate job — verify secrets are configured before running
+  # =========================================================
+  check-secrets:
+    name: Check BigQuery secrets are configured
+    runs-on: ubuntu-latest
+    outputs:
+      has-secrets: ${{ steps.check.outputs.has-secrets }}
+    steps:
+      - id: check
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          if [[ -n "$GCP_SA_KEY" && -n "$GCP_PROJECT_ID" ]]; then
+            echo "has-secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-secrets=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::BigQuery secrets not configured — skipping nightly E2E"
+          fi
+
+  # =========================================================
+  # E2E tests — only run when secrets are configured
+  # =========================================================
   e2e:
     name: End-to-end smoke tests
+    needs: check-secrets
+    if: needs.check-secrets.outputs.has-secrets == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: integration
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: "pip"
@@ -45,7 +71,7 @@ jobs:
           retention-days: 30
 
       - name: Notify on failure
-        if: failure()
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.27.0
         with:
           payload: |
