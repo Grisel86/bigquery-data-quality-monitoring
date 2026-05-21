@@ -1,235 +1,146 @@
-# bigquery-data-quality-monitoring
+# BigQuery Data Quality Monitoring
 
-> Data quality monitoring suite built on **BigQuery** and **GCP Free Tier**, using **dbt Core** and **Python** to validate the Chicago Crime public dataset — with automated checks for completeness, uniqueness, validity, and consistency, persisted to a Delta audit log and tested via GitHub Actions CI/CD.
+[![CI](https://github.com/Grisel86/bigquery-data-quality-monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/Grisel86/bigquery-data-quality-monitoring/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[![CI](https://github.com/Grisel86/bigquery-data-quality-monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/Grisel86/bigquery-data-quality-monitoring/actions)
-![Python](https://img.shields.io/badge/python-3.11-blue)
-![BigQuery](https://img.shields.io/badge/BigQuery-GCP-4285F4?logo=google-cloud)
-![dbt](https://img.shields.io/badge/dbt--core-1.7-FF694B)
-![Cost](https://img.shields.io/badge/GCP%20cost-free%20tier-brightgreen)
+A production-grade data quality monitoring framework for Google BigQuery, built with the rigor of a QA engineer and the practicality of a data engineer.
 
----
+## Why this project
 
-## Overview
+Bad data is silent. By the time a stakeholder notices, a dashboard has already lied, a model has already trained on garbage, or a customer has already received a wrong invoice. This framework catches it at the source — at the warehouse layer — before it propagates downstream.
 
-This project applies a structured data quality engineering approach to the **Chicago Crime public dataset** available natively in BigQuery. It combines:
+Built by a Senior QA Automation Engineer transitioning to Data Engineering, this project deliberately treats data pipelines the way a senior QE treats production software: with a test pyramid, regression catalogs, CI gates, contract tests, and coverage thresholds. **Data quality isn't an afterthought — it's a test suite that runs against your warehouse.**
 
-- **Raw SQL validation scripts** — portable, readable, runnable directly in the BQ console
-- **Python quality framework** — reusable checker classes that mock-able and unit-tested
-- **dbt Core models** — staging → intermediate → mart transformation pipeline with schema tests
-- **BigQuery audit log** — every check result is persisted for trend analysis
-- **GitHub Actions CI/CD** — unit tests run on every push; full pipeline runs on main
+## Features
 
----
+- ✅ **Composable check primitives** — null rate, uniqueness, value range, with more to come (referential integrity, schema drift, freshness, volume anomalies)
+- ✅ **Pure-function design** — checks are pandas-only and trivially unit-testable; BigQuery I/O is isolated
+- ✅ **Regression catalog** — every known-bad data scenario becomes a permanent contract test
+- ✅ **Multi-layer CI** — lint, type-check, security scan, unit tests, contract tests, integration tests, nightly E2E
+- ✅ **Severity-aware** — checks return structured results with severity levels for alerting integration
+- ✅ **Production-ready scaffolding** — pre-commit hooks, conventional commits, branch protection, PR templates
 
 ## Architecture
 
 ```
-bigquery-public-data.chicago_crime.crime  (source — free, no ingestion cost)
-        │
-        ▼
-┌──────────────────────────────────────────────────────────┐
-│  SQL Validation Scripts  (sql/validation/)               │
-│  01_completeness  02_uniqueness  03_validity  04_consistency │
-│  Run directly in BigQuery console or via Python runner   │
-└──────────────────────┬───────────────────────────────────┘
-                       │
-        ┌──────────────▼──────────────┐
-        │   Python Quality Runner     │
-        │   src/runner.py             │
-        │   CompletenessChecker       │
-        │   UniquenessChecker         │
-        │   ValidityChecker           │
-        │   ConsistencyChecker        │
-        └──────────────┬──────────────┘
-                       │ writes results
-                       ▼
-        ┌──────────────────────────────┐
-        │  BigQuery Audit Log          │
-        │  YOUR_PROJECT.dq.dq_check_log│
-        │  Partitioned by run_date     │
-        └──────────────────────────────┘
-                       
-        ┌──────────────────────────────┐
-        │  dbt Core Pipeline           │
-        │  staging/stg_chicago_crime   │
-        │  intermediate/int_enriched   │
-        │  marts/mart_daily_summary    │
-        │        mart_district_analysis│
-        │  + 8 dbt tests (generic +    │
-        │    3 singular assertions)    │
-        └──────────────────────────────┘
+src/
+├── checks.py      # Pure validation logic — no I/O
+├── connector.py   # BigQuery I/O — thin and isolated
+└── alerting.py    # (planned) — Slack/email notifications
+
+tests/
+├── unit/          # Fast, isolated — mocks BigQuery
+├── integration/   # Sandbox-only — real BigQuery
+├── contract/      # Regression catalog of known-bad data
+└── fixtures/      # Versioned bad-data samples
 ```
 
----
-
-## Quality Checks
-
-### Python Runner (14 checks)
-
-| Category | Check | Critical |
-|----------|-------|----------|
-| Completeness | `unique_key`, `date`, `primary_type` not null | ✅ |
-| Completeness | `arrest`, `domestic` not null | No |
-| Completeness | `latitude` ≥ 80% populated | No |
-| Completeness | `district` ≥ 90% populated | No |
-| Uniqueness | `unique_key` is unique | ✅ |
-| Uniqueness | `case_number` is unique | No |
-| Validity | `year` in [2001, current year] | ✅ |
-| Validity | `district` in [1, 31] | No |
-| Validity | `date` not in the future | ✅ |
-| Consistency | `year` = EXTRACT(YEAR FROM `date`) | ✅ |
-| Consistency | coordinates within Chicago bounding box | No |
-
-### dbt Tests (schema.yml + singular)
-
-| Test | Type |
-|------|------|
-| `unique_key` — unique + not_null | Generic |
-| `case_number` — unique + not_null | Generic |
-| `incident_year` in [2001, 2024] | `dbt_utils.accepted_range` |
-| `district` in [1, 31] | `dbt_utils.accepted_range` |
-| `year_matches_date` = true | `accepted_values` |
-| No future incidents | Singular SQL assertion |
-| `year` matches `date` | Singular SQL assertion |
-| `updated_on` ≥ `incident_datetime` | Singular SQL assertion |
-
----
-
-## Project Structure
-
-```
-bigquery-data-quality-monitoring/
-├── sql/
-│   ├── validation/
-│   │   ├── 01_completeness_checks.sql
-│   │   ├── 02_uniqueness_checks.sql
-│   │   ├── 03_validity_checks.sql
-│   │   └── 04_consistency_checks.sql
-│   └── setup/
-│       └── create_quality_log_table.sql
-├── dbt/
-│   ├── dbt_project.yml
-│   ├── profiles.yml
-│   ├── models/
-│   │   ├── staging/   stg_chicago_crime.sql + schema.yml
-│   │   ├── intermediate/  int_crime_enriched.sql
-│   │   └── marts/     mart_daily_crime_summary.sql
-│   │                  mart_district_analysis.sql
-│   ├── tests/singular/   3 SQL assertions
-│   └── macros/        quality_macros.sql (2 generic tests)
-├── src/
-│   ├── quality/
-│   │   ├── checks.py   (4 checker classes, 11 check methods)
-│   │   └── reporter.py (BigQuery audit log writer)
-│   └── runner.py       (CLI entrypoint)
-├── tests/
-│   ├── test_checks.py    (25 unit tests — all mocked, no GCP needed)
-│   └── test_reporter.py  (6 unit tests)
-├── config/quality_config.yaml
-├── .github/workflows/ci.yml
-└── requirements.txt
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-- Python 3.11+
-- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (`gcloud`)
-- GCP Free Tier account (free $300 credit, BigQuery 1TB/month permanently free)
-
-### 1. Clone and install
+## Quick start
 
 ```bash
+# 1. Clone & set up env
 git clone https://github.com/Grisel86/bigquery-data-quality-monitoring.git
 cd bigquery-data-quality-monitoring
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+python -m venv venv
+source venv/Scripts/activate  # Windows Git Bash
+# or: source venv/bin/activate  # macOS/Linux
+
+# 2. Install dev dependencies
+pip install -r requirements-dev.txt
+
+# 3. Install pre-commit hooks
+pre-commit install
+pre-commit install --hook-type commit-msg
+
+# 4. Run the test suite
+pytest tests/unit               # fast unit tests
+pytest tests/contract           # regression catalog
+pytest tests/ -m "not integration"  # everything except real BigQuery
+
+# 5. Use the framework
+python -c "
+import pandas as pd
+from src.checks import check_null_rate
+
+df = pd.DataFrame({'email': ['a@x.com', None, 'c@x.com']})
+result = check_null_rate(df, 'email', max_null_rate=0.0)
+print(result.to_dict())
+"
 ```
 
-### 2. Run unit tests locally (no GCP credentials needed)
+## Example usage
 
-```bash
-pytest tests/ -v
-# 31 tests, all pass with mocked BigQuery client
+```python
+from src.connector import BigQueryConnector
+from src.checks import check_null_rate, check_uniqueness, check_value_range
+
+connector = BigQueryConnector(project_id="my-gcp-project")
+df = connector.fetch_table(
+    dataset="analytics",
+    table="customers",
+    columns=["customer_id", "email", "age"],
+)
+
+results = [
+    check_uniqueness(df, ["customer_id"]),
+    check_null_rate(df, "email", max_null_rate=0.0),
+    check_value_range(df, "age", min_value=0, max_value=120),
+]
+
+for r in results:
+    icon = "✅" if r.passed else "❌"
+    print(f"{icon} [{r.severity}] {r.check_name}: {r.message}")
 ```
 
-### 3. Set up GCP Free Tier
+## Development workflow
 
-```bash
-# Authenticate
-gcloud auth application-default login
+This repo uses a GitFlow-inspired branching model:
 
-# Create the audit log table (replace with your project/dataset)
-bq query --use_legacy_sql=false < sql/setup/create_quality_log_table.sql
-```
+| Branch              | Purpose                                          |
+| ------------------- | ------------------------------------------------ |
+| `main`              | Production-ready; protected; tagged releases     |
+| `develop`           | Integration branch; protected; CI must pass      |
+| `feature/<desc>`    | New features (branched from `develop`)           |
+| `bugfix/<desc>`     | Non-urgent bug fixes                             |
+| `hotfix/<desc>`     | Urgent production fixes (branched from `main`)   |
+| `refactor/<desc>`   | Internal restructuring, no behavior change       |
+| `test/<desc>`       | Test infrastructure changes only                 |
+| `qa/<scenario>`     | Exploratory chaos/scenario testing               |
 
-### 4. Run SQL checks directly in BigQuery Console
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`, `ci:`, `perf:`.
 
-Open any file in `sql/validation/` and run it in the [BigQuery Console](https://console.cloud.google.com/bigquery). The Chicago Crime dataset is already public — no setup needed.
+## Testing strategy
 
-### 5. Run the Python quality pipeline
+This project applies the test pyramid to data tooling:
 
-```bash
-python src/runner.py \
-    --project YOUR_GCP_PROJECT \
-    --log-dataset chicago_crime_dq \
-    --dry-run          # omit --dry-run to write results to BigQuery
-```
+| Layer             | Speed       | What it verifies                                          |
+| ----------------- | ----------- | --------------------------------------------------------- |
+| **Unit**          | ms          | Check logic with hand-crafted DataFrames; no I/O          |
+| **Contract**      | ms          | Regression catalog — every known-bad scenario stays caught|
+| **Integration**   | seconds     | Real BigQuery sandbox; one check per fixture table        |
+| **E2E**           | minutes     | Full flow: config → connect → check → alert → report      |
 
-### 6. Run dbt
+**Coverage gate:** 60% minimum, ratcheted upward, never downward.
 
-```bash
-cd dbt
+## Project status
 
-# Edit profiles.yml: replace YOUR_GCP_PROJECT
-dbt deps
-dbt run   # builds staging → intermediate → mart models
-dbt test  # runs all schema + singular tests
-```
+This is an active portfolio project. Roadmap:
 
----
+- [x] Core check primitives (null, unique, range)
+- [x] Test pyramid + CI/CD
+- [ ] Schema drift detection
+- [ ] Freshness checks (max(updated_at) thresholds)
+- [ ] Volume anomaly detection (week-over-week ratios)
+- [ ] Slack alerting
+- [ ] Streamlit dashboard for check results history
+- [ ] dbt integration
 
-## CI/CD
+## About
 
-| Job | Trigger | GCP needed? |
-|-----|---------|-------------|
-| Unit tests (pytest) | Every push / PR | No |
-| dbt compile | Every push / PR | No |
-| Full quality pipeline | Push to main only | Yes (secrets) |
+Built by **[Fabiana Grisel González](https://www.linkedin.com/in/fabiana-grisel-gonzalez)** — Senior QA Automation Engineer transitioning to Data Engineering. The combination matters: data pipelines that aren't tested are pipelines waiting to fail silently. This project is a working demonstration that QA engineering principles are exactly what modern data platforms need.
 
-Add these secrets to your GitHub repo (`Settings → Secrets`):
-- `GCP_PROJECT` — your GCP project ID
-- `GCP_SERVICE_ACCOUNT_JSON` — service account JSON with BigQuery roles
+## License
 
----
-
-## Dataset
-
-**Chicago Crime Dataset** — `bigquery-public-data.chicago_crime.crime`
-- Source: Chicago Police Department CLEAR system
-- ~8M rows, 22 columns, updated daily
-- Available natively in BigQuery — no ingestion required
-
----
-
-## Tech Stack
-
-| Tool | Purpose |
-|------|---------|
-| Google BigQuery | Serverless SQL query engine + data warehouse |
-| GCP Free Tier | $300 credit + 1TB/month free BigQuery queries |
-| dbt Core (free) | SQL transformations + schema testing |
-| Python + google-cloud-bigquery | Programmatic quality checks |
-| pytest + unittest.mock | Unit testing without GCP credentials |
-| GitHub Actions | CI/CD — tests on every push |
-
----
-
-## Author
-
-**Fabiana Grisel González**  
-QA Automation Engineer → Data Engineering  
-[GitHub: @Grisel86](https://github.com/Grisel86) · [LinkedIn](https://www.linkedin.com/in/fabiana-grisel-gonzalez)
+MIT
