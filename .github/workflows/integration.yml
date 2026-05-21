@@ -1,27 +1,26 @@
-name: Integration Tests
-
-on:
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - "src/**"
-      - "tests/integration/**"
-      - "requirements*.txt"
-  workflow_dispatch:  # Allow manual triggering
-
-# Don't run integration in parallel for the same branch — they share BigQuery resources
-concurrency:
-  group: integration-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
+  check-secrets:
+    name: Check if BigQuery secrets are configured
+    runs-on: ubuntu-latest
+    outputs:
+      has-secrets: ${{ steps.check.outputs.has-secrets }}
+    steps:
+      - id: check
+        run: |
+          if [[ -n "${{ secrets.GCP_SA_KEY }}" && -n "${{ secrets.GCP_PROJECT_ID }}" ]]; then
+            echo "has-secrets=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-secrets=false" >> $GITHUB_OUTPUT
+            echo "::notice::BigQuery secrets not configured — skipping integration tests"
+          fi
+
   integration:
     name: BigQuery integration tests
+    needs: check-secrets
+    if: needs.check-secrets.outputs.has-secrets == 'true'
     runs-on: ubuntu-latest
-    # Skip on Dependabot PRs (they don't have secrets access)
-    if: github.actor != 'dependabot[bot]'
     timeout-minutes: 20
-    environment: integration  # Use GitHub Environments for secret scoping
+    environment: integration
 
     steps:
       - uses: actions/checkout@v5
