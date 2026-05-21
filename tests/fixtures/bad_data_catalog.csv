@@ -1,0 +1,8 @@
+scenario_id,description,customer_id,email,age,country
+NULL_EMAIL_001,Customer with NULL email address,1,,30,AR
+NULL_EMAIL_002,Multiple NULL emails in the batch,2,,25,AR
+NULL_EMAIL_002,Multiple NULL emails in the batch,3,,28,BR
+DUP_ID_001,Duplicate customer_id,100,a@x.com,30,AR
+DUP_ID_001,Duplicate customer_id,100,b@x.com,31,AR
+NEG_AGE_001,Negative age value,200,c@x.com,-5,CL
+HIGH_AGE_001,Age above realistic max,201,d@x.com,250,CL
