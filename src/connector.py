@@ -1,5 +1,8 @@
 import re
 
+import pandas as pd
+import pd
+
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -14,11 +17,11 @@ class BigQueryConnector:
     # ... __init__ and query_to_dataframe unchanged ...
 
     def fetch_table(
-            self,
-            dataset: str,
-            table: str,
-            columns: list[str] | None = None,
-            limit: int | None = None,
+        self,
+        dataset: str,
+        table: str,
+        columns: list[str] | None = None,
+        limit: int | None = None,
     ) -> pd.DataFrame:
         """Pull a table (or column subset) into a DataFrame."""
         _validate_identifier(dataset, "dataset")
