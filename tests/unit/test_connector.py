@@ -1,18 +1,20 @@
 """Unit tests for src/connector.py.
 
 We mock the BigQuery client entirely — these tests verify that the connector
-constructs the right queries and handles responses correctly, NOT that BigQuery
-itself works. Integration tests cover the latter.
+constructs the right queries, validates inputs, and handles responses
+correctly. NOT that BigQuery itself works (integration tests cover that).
 """
 
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
-from src.connector import BigQueryConnector
+from src.connector import BigQueryConnector, _validate_identifier
 
 
 class TestBigQueryConnector:
+    """Tests for the BigQueryConnector class."""
 
     def test_query_to_dataframe_returns_expected_data(self, mock_bq_client):
         connector = BigQueryConnector(
@@ -58,3 +60,51 @@ class TestBigQueryConnector:
         connector.fetch_table("ds", "t", limit=50)
         sql = mock_bq_client.query.call_args[0][0]
         assert "LIMIT 50" in sql
+
+
+class TestValidateIdentifier:
+    """Tests for _validate_identifier — security-critical input validation."""
+
+    # ===== Happy path =====
+    def test_accepts_simple_identifier(self):
+        assert _validate_identifier("customer_id", "column") == "customer_id"
+
+    def test_accepts_identifier_with_underscores_and_digits(self):
+        assert _validate_identifier("col_123_abc", "column") == "col_123_abc"
+
+    def test_accepts_identifier_starting_with_underscore(self):
+        assert _validate_identifier("_private", "column") == "_private"
+
+    # ===== Rejection of injection attempts =====
+    @pytest.mark.parametrize(
+        "malicious_input",
+        [
+            "users; DROP TABLE customers;--",
+            "col' OR '1'='1",
+            "col`backtick",
+            "col with spaces",
+            "col-with-dashes",
+            "col.with.dots",
+            "col,comma",
+            "col(parens)",
+            "col\"quotes",
+            "col\nnewline",
+            "col\ttab",
+        ],
+    )
+    def test_rejects_injection_attempts(self, malicious_input):
+        with pytest.raises(ValueError, match="Invalid"):
+            _validate_identifier(malicious_input, "column")
+
+    # ===== Edge cases =====
+    def test_rejects_empty_string(self):
+        with pytest.raises(ValueError):
+            _validate_identifier("", "column")
+
+    def test_rejects_starting_with_digit(self):
+        with pytest.raises(ValueError):
+            _validate_identifier("1column", "column")
+
+    def test_error_message_includes_kind(self):
+        with pytest.raises(ValueError, match="column"):
+            _validate_identifier("bad name", "column")
